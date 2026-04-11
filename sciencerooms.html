@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>science rooms</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #121212; color: #fff; margin: 0; display: flex; justify-content: center; height: 100vh; }
+        #wrapper { width: 100%; max-width: 500px; display: flex; flex-direction: column; background: #1a1a1a; position: relative; }
+        
+        /* Menu */
+        #menu { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 20px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 80%; }
+        .room-btn { padding: 40px; font-size: 24px; font-weight: bold; border: none; border-radius: 12px; cursor: pointer; background: #333; color: white; }
+        .room-btn:hover { background: #007bff; }
+        #name-input { padding: 12px; border-radius: 8px; border: 1px solid #444; background: #000; color: white; width: 70%; text-align: center; }
+
+        /* Chat */
+        #chat-interface { display: none; flex-direction: column; height: 100%; }
+        #header { padding: 15px; background: #222; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+        #chat-area { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+        
+        /* Messages */
+        .msg-wrap { display: flex; flex-direction: column; }
+        .msg { padding: 10px 15px; border-radius: 18px; max-width: 80%; word-wrap: break-word; font-size: 15px; }
+        .name { font-size: 11px; color: #888; margin: 0 5px 2px 5px; }
+        .mine { background: #007bff; align-self: flex-end; }
+        .theirs { background: #333; align-self: flex-start; }
+
+        /* Input */
+        #input-bar { padding: 15px; background: #222; display: flex; gap: 10px; }
+        input#msg-text { flex: 1; padding: 12px; border-radius: 25px; border: 1px solid #444; background: #121212; color: white; outline: none; }
+        button.send-btn { background: #007bff; color: white; border: none; padding: 0 20px; border-radius: 25px; cursor: pointer; }
+        .exit-btn { background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div id="wrapper">
+    <div id="menu">
+        <h1>Chat Rooms</h1>
+        <input type="text" id="name-input" placeholder="Enter Username" maxlength="12">
+        <div class="grid">
+            <button class="room-btn" onclick="join(1)">1</button>
+            <button class="room-btn" onclick="join(2)">2</button>
+            <button class="room-btn" onclick="join(3)">3</button>
+            <button class="room-btn" onclick="join(4)">4</button>
+        </div>
+    </div>
+
+    <div id="chat-interface">
+        <div id="header">
+            <span id="title">Room</span>
+            <button class="exit-btn" onclick="exit()">Exit</button>
+        </div>
+        <div id="chat-area"></div>
+        <div id="input-bar">
+            <input type="text" id="msg-text" placeholder="Type a message...">
+            <button class="send-btn" onclick="send()">Send</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let client, currentRoom, myName;
+    // We use a public broker that allows browser connections (WebSockets)
+    const broker = 'wss://test.mosquitto.org:8081'; 
+
+    function join(roomNum) {
+        myName = document.getElementById('name-input').value.trim();
+        if (!myName) return alert("Enter a name!");
+
+        currentRoom = 'unique_chat_prefix_' + roomNum; // Change 'unique_chat_prefix' to something secret
+        document.getElementById('menu').style.display = 'none';
+        document.getElementById('chat-interface').style.display = 'flex';
+        document.getElementById('title').innerText = "Room " + roomNum;
+
+        client = mqtt.connect(broker);
+        client.on('connect', () => {
+            client.subscribe(currentRoom);
+            addSystemMsg("Connected to " + currentRoom);
+        });
+
+        client.on('message', (topic, payload) => {
+            const data = JSON.parse(payload.toString());
+            if (data.user !== myName) {
+                renderMsg(data.user, data.text, 'theirs');
+            }
+        });
+    }
+
+    function send() {
+        const input = document.getElementById('msg-text');
+        if (input.value && client) {
+            const message = { user: myName, text: input.value };
+            client.publish(currentRoom, JSON.stringify(message));
+            renderMsg(myName, input.value, 'mine');
+            input.value = '';
+        }
+    }
+
+    function renderMsg(user, text, type) {
+        const area = document.getElementById('chat-area');
+        const wrap = document.createElement('div');
+        wrap.className = 'msg-wrap';
+        wrap.style.alignItems = (type === 'mine') ? 'flex-end' : 'flex-start';
+        
+        wrap.innerHTML = `<span class="name">${user}</span><div class="msg ${type}">${text}</div>`;
+        area.appendChild(wrap);
+        area.scrollTop = area.scrollHeight;
+    }
+
+    function addSystemMsg(t) {
+        const d = document.createElement('div');
+        d.style.cssText = "text-align:center; font-size:10px; color:#555; margin:10px;";
+        d.innerText = t;
+        document.getElementById('chat-area').appendChild(d);
+    }
+
+    function exit() {
+        location.reload(); // Simplest way to wipe everything and disconnect
+    }
+
+    document.getElementById('msg-text').addEventListener("keypress", e => {
+        if (e.key === "Enter") send();
+    });
+</script>
+
+</body>
+</html>
